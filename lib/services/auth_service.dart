@@ -1,4 +1,3 @@
-// lib/services/auth_service.dart
 import 'package:dio/dio.dart';
 import '../models/user_model.dart';
 import '../utils/constants.dart';
@@ -7,68 +6,57 @@ import 'api_service.dart';
 class AuthService {
   final ApiService _api = ApiService();
 
+  /// Sign in — Better Auth sets a session cookie in the response.
+  /// It does NOT return a token. The cookie is stored automatically by CookieJar.
   Future<UserModel?> signIn(String email, String password) async {
     try {
       final response = await _api.dio.post(
         AppConstants.signInEndpoint,
         data: {'email': email, 'password': password},
       );
-      print('🔵 Login response status: ${response.statusCode}');
-      print('🔵 Full response: ${response.data}');
 
       if (response.statusCode == 200) {
         final data = response.data;
-        final token = data['token'];
-        if (token == null) {
-          print('❌ No token in response');
-          throw Exception('No token received');
-        }
-        await _api.saveToken(token);
-
-        final userJson = data['user'];
+        // Better Auth returns { user: {...}, session: {...} }
+        // The session cookie is set automatically — no token needed
+        final userJson = data['user'] ?? data;
         if (userJson == null) {
-          print('❌ No user object in response');
-          throw Exception('No user data received');
+          throw Exception('لم يتم استلام بيانات المستخدم');
         }
-        return UserModel.fromJson(userJson);
+        return UserModel.fromJson({'user': userJson});
       } else {
-        throw Exception('Login failed with status ${response.statusCode}');
+        final msg = response.data?['message'] ??
+            response.data?['error'] ??
+            'فشل تسجيل الدخول (${response.statusCode})';
+        throw Exception(msg);
       }
     } on DioException catch (e) {
-      print('❌ DioException: ${e.type}');
-      print('❌ Message: ${e.message}');
-      if (e.response != null) {
-        print('❌ Status: ${e.response?.statusCode}');
-        print('❌ Data: ${e.response?.data}');
-      } else {
-        print('❌ No response (network/CORS)');
-      }
-      throw Exception(e.response?.data['message'] ?? 'فشل تسجيل الدخول');
-    } catch (e) {
-      print('❌ Unexpected error: $e');
-      throw Exception('خطأ غير متوقع');
+      final msg = e.response?.data?['message'] ??
+          e.response?.data?['error'] ??
+          'خطأ في الاتصال بالخادم';
+      throw Exception(msg);
     }
   }
 
-  // getSession and signOut unchanged...
+  /// Check if there is an active session (cookie is sent automatically)
   Future<UserModel?> getSession() async {
     try {
       final response = await _api.dio.get(AppConstants.sessionEndpoint);
-      if (response.statusCode == 200 && response.data['user'] != null) {
+      if (response.statusCode == 200 && response.data?['user'] != null) {
         return UserModel.fromJson(response.data['user']);
       }
       return null;
-    } catch (e) {
-      print('getSession error: $e');
+    } catch (_) {
       return null;
     }
   }
 
+  /// Sign out — clears server session and local cookies
   Future<void> signOut() async {
     try {
       await _api.dio.post(AppConstants.signOutEndpoint);
     } finally {
-      await _api.clearToken();
+      await _api.clearSession();
     }
   }
 }
