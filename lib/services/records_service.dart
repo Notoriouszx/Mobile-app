@@ -61,9 +61,15 @@ class RecordsService {
           'description': description,
       });
 
+      // ✅ Add blob token header for upload
       final response = await _api.dio.post(
         AppConstants.recordsEndpoint,
         data: formData,
+        options: Options(
+          headers: {
+            'x-blob-token': AppConstants.blobReadWriteToken,
+          },
+        ),
         onSendProgress: onProgress,
       );
 
