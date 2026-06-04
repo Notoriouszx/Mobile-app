@@ -1,6 +1,7 @@
 class AppConstants {
   static const String baseUrl = 'https://project-9g6if.vercel.app';
 
+  // Better Auth endpoints (web app uses better-auth)
   static const String signInEndpoint = '/api/auth/sign-in/email';
   static const String signOutEndpoint = '/api/auth/sign-out';
   static const String sessionEndpoint = '/api/auth/get-session';
