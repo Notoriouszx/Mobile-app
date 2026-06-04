@@ -7,6 +7,9 @@ environment:
   sdk: '>=3.3.0 <4.0.0'
 
 dependencies:
+
+flutter_secure_storage: ^9.0.0 
+
   flutter:
     sdk: flutter
   # مطلوب لدعم العربية RTL (GlobalMaterialLocalizations etc.)
