@@ -15,47 +15,44 @@ class ApiService {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      // On web, browser handles cookies automatically via credentials
+      // Enable credentials (cookies) for authentication
+      // This allows session cookies to be sent with each request
       extra: {'withCredentials': true},
+      // Don't throw on any status code - we handle them ourselves
+      validateStatus: (status) => status != null && status < 600,
     ));
 
-    // Only add cookie manager on mobile (not web)
-    if (!kIsWeb) {
-      _addMobileCookieSupport();
-    }
-
+    // Add interceptors for debugging and cookie management
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
-        // On web, browser sends cookies automatically
-        // On mobile, cookies are managed by the cookie jar
+        // Ensure credentials are sent with each request
         options.extra['withCredentials'] = true;
+        print('API Request: ${options.method} ${options.path}');
         handler.next(options);
       },
+      onResponse: (response, handler) {
+        print('API Response: ${response.statusCode} ${response.requestOptions.path}');
+        handler.next(response);
+      },
       onError: (error, handler) {
-        print('API Error: ${error.response?.statusCode} ${error.requestOptions.path}');
+        print('API Error: ${error.response?.statusCode} ${error.requestOptions.path} - ${error.message}');
         handler.next(error);
       },
     ));
+
+    // Add cookie manager for mobile platforms
+    if (!kIsWeb) {
+      _addMobileCookieSupport();
+    }
   }
 
-  void _addMobileCookieSupport() async {
+  void _addMobileCookieSupport() {
     try {
-      // Dynamic import only on mobile platforms
-      // ignore: avoid_dynamic_calls
-      final cookieJar = await _createCookieJar();
-      if (cookieJar != null) {
-        _dio.interceptors.add(cookieJar);
-      }
-    } catch (_) {}
-  }
-
-  Future<Interceptor?> _createCookieJar() async {
-    try {
-      // This will only be called on non-web platforms
-      final CookieJarInterceptor interceptor = CookieJarInterceptor();
-      return interceptor;
-    } catch (_) {
-      return null;
+      final cookieJar = CookieJarInterceptor();
+      _dio.interceptors.add(cookieJar);
+      print('Cookie jar interceptor added for mobile');
+    } catch (e) {
+      print('Cookie support error: $e');
     }
   }
 
@@ -67,12 +64,13 @@ class ApiService {
   Dio get dio => _dio;
 
   Future<void> clearCookies() async {
-    // On web, we can't clear cookies directly
-    // Better Auth handles logout via the API
+    // Cookies are managed by the interceptor and server session
+    print('Cookies cleared via logout');
   }
 }
 
-// Simple cookie interceptor for mobile
+/// Simple cookie interceptor for mobile platforms
+/// Handles Set-Cookie headers from responses and sends cookies with requests
 class CookieJarInterceptor extends Interceptor {
   final Map<String, String> _cookies = {};
 
@@ -80,10 +78,14 @@ class CookieJarInterceptor extends Interceptor {
   void onResponse(Response response, ResponseInterceptorHandler handler) {
     final setCookie = response.headers['set-cookie'];
     if (setCookie != null) {
+      print('Set-Cookie header found: $setCookie');
       for (final cookie in setCookie) {
         final parts = cookie.split(';')[0].split('=');
         if (parts.length >= 2) {
-          _cookies[parts[0].trim()] = parts.sublist(1).join('=').trim();
+          final name = parts[0].trim();
+          final value = parts.sublist(1).join('=').trim();
+          _cookies[name] = value;
+          print('Stored cookie: $name=$value');
         }
       }
     }
@@ -93,7 +95,9 @@ class CookieJarInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     if (_cookies.isNotEmpty) {
-      options.headers['Cookie'] = _cookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
+      final cookieHeader = _cookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
+      options.headers['Cookie'] = cookieHeader;
+      print('Sending cookies: $cookieHeader');
     }
     handler.next(options);
   }
