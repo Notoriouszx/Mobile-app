@@ -6,20 +6,39 @@ on:
   pull_request:
     branches: [ main ]
 
+# Required for GitHub Pages deployment
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.4'  # Latest stable as of June 2025
+          flutter-version: '3.27.4'
           channel: 'stable'
-      - run: flutter pub get
-      - name: Build Web
-        run: flutter build web --release --no-wasm-dry-run
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze code
+        run: flutter analyze --no-fatal-infos
+        continue-on-error: true  # don't block deploy on warnings
+
+      - name: Build Flutter Web
+        run: flutter build web --release --base-href "/patient-app/"
+        # Replace "patient-app" with your actual GitHub repo name
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
+        if: github.ref == 'refs/heads/main'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build/web
+          force_orphan: true  # keeps gh-pages branch clean on every redeploy
