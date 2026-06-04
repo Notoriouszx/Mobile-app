@@ -1,0 +1,41 @@
+name: patient_app
+description: Patient mobile app for medical platform
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # مطلوب لدعم العربية RTL (GlobalMaterialLocalizations etc.)
+  flutter_localizations:
+    sdk: flutter
+
+  # HTTP
+  dio: ^5.4.0
+
+  # State Management
+  provider: ^6.1.1
+
+  # Storage
+  shared_preferences: ^2.2.2
+
+  # File Handling
+  file_picker: ^8.0.0+1
+
+  # UI
+  google_fonts: ^6.1.0
+  # يجب أن يطابق ما يتطلبه flutter_localizations من الـ SDK
+  intl: ^0.20.0
+
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
