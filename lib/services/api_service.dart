@@ -1,40 +1,36 @@
-// lib/services/api_service.dart
 import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../utils/constants.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:cookie_jar/cookie_jar.dart';
+import '../utils/constants.dart';
 
 class ApiService {
   static ApiService? _instance;
   late Dio _dio;
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  late CookieJar _cookieJar;
 
   ApiService._internal() {
-    final cookieJar = CookieJar();
-    _dio.interceptors.add(CookieManager(cookieJar));
+    _cookieJar = CookieJar();
+
     _dio = Dio(BaseOptions(
       baseUrl: AppConstants.baseUrl,
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 30),
-      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      // Better Auth uses cookies — accept all status codes so we can read errors
       validateStatus: (status) => status != null && status < 600,
     ));
-    _addTokenInterceptor();
-  }
 
-  void _addTokenInterceptor() {
+    // Cookie manager: automatically sends/stores session cookies (like a browser)
+    _dio.interceptors.add(CookieManager(_cookieJar));
+
+    // Auto-handle 401 by clearing cookies
     _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) async {
-        final token = await _storage.read(key: 'auth_token');
-        if (token != null) {
-          options.headers['Authorization'] = 'Bearer $token';
-        }
-        handler.next(options);
-      },
       onError: (error, handler) async {
         if (error.response?.statusCode == 401) {
-          await _storage.delete(key: 'auth_token');
+          await clearSession();
         }
         handler.next(error);
       },
@@ -48,11 +44,8 @@ class ApiService {
 
   Dio get dio => _dio;
 
-  Future<void> saveToken(String token) async {
-    await _storage.write(key: 'auth_token', value: token);
-  }
-
-  Future<void> clearToken() async {
-    await _storage.delete(key: 'auth_token');
+  /// Clear all session cookies (called on sign-out or 401)
+  Future<void> clearSession() async {
+    await _cookieJar.deleteAll();
   }
 }
