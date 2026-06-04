@@ -2,6 +2,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/constants.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:cookie_jar/cookie_jar.dart';
 
 class ApiService {
   static ApiService? _instance;
@@ -9,6 +11,8 @@ class ApiService {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   ApiService._internal() {
+    final cookieJar = CookieJar();
+    _dio.interceptors.add(CookieManager(cookieJar));
     _dio = Dio(BaseOptions(
       baseUrl: AppConstants.baseUrl,
       connectTimeout: const Duration(seconds: 15),
