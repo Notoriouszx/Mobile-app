@@ -16,6 +16,8 @@ dependencies:
   # HTTP
   dio: ^5.4.0
 
+  cors_proxy: ^1.0.0
+
   # State Management
   provider: ^6.1.1
 
