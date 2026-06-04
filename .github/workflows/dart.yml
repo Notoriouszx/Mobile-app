@@ -2,16 +2,14 @@ name: Deploy Flutter Web to GitHub Pages
 
 on:
   push:
-    branches: [ main ]          # change to 'master' if needed
-  workflow_dispatch:            # allows manual trigger
+    branches: [ main ]
+  workflow_dispatch:
 
-# Required permissions for GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Only one deployment at a time
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -24,29 +22,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.4'
+          flutter-version: '3.35.4'   # Use a stable version that supports --no-wasm-dry-run
           channel: 'stable'
-
-      - name: Install dependencies
-        run: flutter pub get
-
+      - run: flutter pub get
       - name: Build Web
-        run: flutter build web --release   # no flag needed – WASM disabled in pubspec
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        run: flutter build web --release --no-wasm-dry-run   # Add the flag to suppress warnings
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: './build/web'
-
-      - name: Deploy to GitHub Pages
+      - uses: actions/deploy-pages@v4
         id: deployment
-        uses: actions/deploy-pages@v4
