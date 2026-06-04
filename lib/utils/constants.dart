@@ -9,6 +9,7 @@ class AppConstants {
 
   // ─── Medical Records ──────────────────────────────────────────────
   // Used as: AppConstants.medicalRecordsEndpoint  (in records_screen / records_service)
+  static const String blobReadWriteToken = 'vercel_blob_rw_wXSi5ePSeFgreV59_dGypR5AWuIQmDnaug8cJ2OvzLyORae'; // your actual token
   static const String medicalRecordsEndpoint = '/api/medical-records';
   static const String recordsEndpoint = medicalRecordsEndpoint; // alias used by RecordsService
 
