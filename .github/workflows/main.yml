@@ -29,11 +29,16 @@ jobs:
 
       - name: Analyze code
         run: flutter analyze --no-fatal-infos
-        continue-on-error: true  # don't block deploy on warnings
+        continue-on-error: true
+
+      - name: Create missing manifest.json (to avoid 404)
+        run: |
+          if [ ! -f "web/manifest.json" ]; then
+            echo '{"name":"تطبيق المريض","short_name":"المريض","start_url":".","display":"standalone","theme_color":"#0A6EBD","icons":[{"src":"icons/Icon-192.png","sizes":"192x192","type":"image/png"}]}' > web/manifest.json
+          fi
 
       - name: Build Flutter Web
-        run: flutter build web --release --base-href "/Mobile-app/"
-        # Replace "patient-app" with your actual GitHub repo name
+        run: flutter build web --release --base-href "/Mobile-app/" --web-renderer canvaskit --no-wasm-dry-run
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
@@ -41,4 +46,4 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build/web
-          force_orphan: true  # keeps gh-pages branch clean on every redeploy
+          force_orphan: true
