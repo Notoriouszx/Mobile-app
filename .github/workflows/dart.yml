@@ -2,16 +2,16 @@ name: Deploy Flutter Web to GitHub Pages
 
 on:
   push:
-    branches: [ main ]        # or 'master' if your default branch is master
-  workflow_dispatch:          # allows manual trigger from Actions tab
+    branches: [ main ]          # change to 'master' if needed
+  workflow_dispatch:            # allows manual trigger
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+# Required permissions for GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment
+# Only one deployment at a time
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -30,15 +30,14 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.4'   # latest stable as of June 2025
+          flutter-version: '3.27.4'
           channel: 'stable'
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build Web (release)
-        # --no-wasm-dry-run bypasses the flutter_secure_storage_web conflict
-        run: flutter build web --release --no-wasm-dry-run
+      - name: Build Web
+        run: flutter build web --release   # no flag needed – WASM disabled in pubspec
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
