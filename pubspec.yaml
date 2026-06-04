@@ -13,9 +13,9 @@ dependencies:
     sdk: flutter
 
   flutter_secure_storage: ^9.0.0
-  dio_cookie_manager: ^3.1.1
-  cookie_jar: ^4.0.8
   dio: ^5.4.0
+  dio_cookie_manager: ^3.1.1   # NEW: cookie jar for Better Auth session cookies
+  cookie_jar: ^4.0.8            # NEW: persistent cookie storage
   provider: ^6.1.1
   shared_preferences: ^2.2.2
   file_picker: ^8.0.0+1
