@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:cookie_jar/cookie_jar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/constants.dart';
 
 class ApiService {
@@ -20,25 +21,46 @@ class ApiService {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      // Never throw on 4xx/5xx — callers check statusCode themselves
       validateStatus: (status) => status != null && status < 600,
-      // withCredentials=true is required on web so the browser
-      // sends the better-auth session cookie on cross-origin requests
-      // AND accepts the credentialed CORS response from Vercel.
       extra: {'withCredentials': true},
     ));
 
     if (!kIsWeb) {
-      // Mobile / desktop: CookieManager stores the better-auth
-      // session cookie from the login response and replays it
-      // automatically on every subsequent request.
       _dio.interceptors.add(CookieManager(_cookieJar));
     }
-    // On web: withCredentials=true in extra is sufficient.
-    // The browser handles cookie storage and replay natively.
-    // Do NOT add CookieManager on web.
 
+    // Intercept every request and attach the session token as a header.
+    // This is required because the cookie is on notoriouszx.github.io
+    // but the API is on project-9g6if.vercel.app — browsers never send
+    // cookies cross-domain, so we read the saved token and send it as
+    // the "x-session-token" header which the backend reads explicitly.
     _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        final prefs = await SharedPreferences.getInstance();
+        final token = prefs.getString('session_token');
+        if (token != null) {
+          options.headers['x-session-token'] = token;
+        }
+        handler.next(options);
+      },
+      onResponse: (response, handler) async {
+        // After login, Better Auth returns the session token in the
+        // response body under session.token — save it for future requests.
+        if (response.requestOptions.path == AppConstants.signInEndpoint &&
+            response.statusCode == 200) {
+          final data = response.data;
+          if (data is Map) {
+            final sessionToken =
+                data['session']?['token'] as String? ??
+                data['token'] as String?;
+            if (sessionToken != null) {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('session_token', sessionToken);
+            }
+          }
+        }
+        handler.next(response);
+      },
       onError: (error, handler) async {
         if (error.response?.statusCode == 401) {
           await clearSession();
@@ -59,6 +81,7 @@ class ApiService {
     if (!kIsWeb) {
       await _cookieJar.deleteAll();
     }
-    // On web the server clears the cookie via Set-Cookie on sign-out.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('session_token');
   }
 }
