@@ -6,10 +6,19 @@ import 'api_service.dart';
 class GrantsService {
   final ApiService _api = ApiService();
 
+  // ✅ ADDED: helper to ensure token is set
+  Future<void> _ensureToken() async {
+    final token = await _api.getToken();
+    if (token != null && token.isNotEmpty) {
+      _api.dio.options.headers['Authorization'] = 'Bearer $token';
+    }
+  }
+
   // ─── My grants ────────────────────────────────────────────────────
 
   Future<List<AccessGrant>> getMyGrants() async {
     try {
+      await _ensureToken(); // ✅ safety
       final response = await _api.dio.get(AppConstants.grantsEndpoint);
 
       if (response.statusCode == 200) {
@@ -33,8 +42,8 @@ class GrantsService {
   /// Backend: GET /api/patient/available-providers → { items: [...] }
   Future<List<Doctor>> getDoctors() async {
     try {
-      final response =
-          await _api.dio.get(AppConstants.doctorsEndpoint);
+      await _ensureToken(); // ✅ safety
+      final response = await _api.dio.get(AppConstants.doctorsEndpoint);
 
       if (response.statusCode == 200) {
         final data = response.data as Map<String, dynamic>;
@@ -60,6 +69,7 @@ class GrantsService {
     required int expiresInHours,
   }) async {
     try {
+      await _ensureToken(); // ✅ safety
       final response = await _api.dio.post(
         AppConstants.grantsEndpoint,
         data: {
@@ -91,8 +101,8 @@ class GrantsService {
   /// Backend: DELETE /api/access-grants/[id]
   Future<void> revokeGrant(String id) async {
     try {
-      final response =
-          await _api.dio.delete('${AppConstants.grantsEndpoint}/$id');
+      await _ensureToken(); // ✅ safety
+      final response = await _api.dio.delete('${AppConstants.grantsEndpoint}/$id');
       if (response.statusCode != 200 && response.statusCode != 204) {
         throw Exception(_extractError(response.data, response.statusCode));
       }
