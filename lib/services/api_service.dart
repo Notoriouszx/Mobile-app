@@ -2,12 +2,14 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:cookie_jar/cookie_jar.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/constants.dart';
 
 class ApiService {
   static ApiService? _instance;
   late final Dio _dio;
   late final CookieJar _cookieJar;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   ApiService._internal() {
     _cookieJar = CookieJar();
@@ -20,23 +22,23 @@ class ApiService {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      // Never throw on 4xx/5xx — callers check statusCode themselves
       validateStatus: (status) => status != null && status < 600,
-      // This is the Dio 5.x way to enable withCredentials on web.
-      // It tells the underlying XHR to include cookies / auth headers
-      // in cross-origin requests.
       extra: {'withCredentials': true},
     ));
 
     if (!kIsWeb) {
-      // Mobile / desktop: persist the better-auth session cookie and
-      // replay it on every request automatically.
       _dio.interceptors.add(CookieManager(_cookieJar));
     }
-    // On web: the browser handles cookies. 'withCredentials: true' in
-    // BaseOptions.extra is enough — no CookieManager needed.
 
+    // 🔑 CRITICAL: Add token interceptor for ALL platforms
     _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        final token = await _storage.read(key: 'auth_token');
+        if (token != null) {
+          options.headers['Authorization'] = 'Bearer $token';
+        }
+        handler.next(options);
+      },
       onError: (error, handler) async {
         if (error.response?.statusCode == 401) {
           await clearSession();
@@ -53,11 +55,21 @@ class ApiService {
 
   Dio get dio => _dio;
 
-  /// Clears local cookies on mobile/desktop.
-  /// On web the server clears the cookie via Set-Cookie on sign-out.
+  /// Save the Bearer token after login
+  Future<void> saveToken(String token) async {
+    await _storage.write(key: 'auth_token', value: token);
+  }
+
+  /// Clear the Bearer token on logout
+  Future<void> clearToken() async {
+    await _storage.delete(key: 'auth_token');
+  }
+
+  /// Clear both cookies (mobile) and token
   Future<void> clearSession() async {
     if (!kIsWeb) {
       await _cookieJar.deleteAll();
     }
+    await clearToken();
   }
 }
