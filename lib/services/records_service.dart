@@ -1,101 +1,121 @@
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
-import 'api_service.dart';
 import '../models/medical_record_model.dart';
 import '../utils/constants.dart';
+import 'api_service.dart';
 
 class RecordsService {
-  final _api = ApiService();
+  final ApiService _api = ApiService();
 
-  /// جلب سجلات المريض
+  // ─── Fetch records ────────────────────────────────────────────────
+
   Future<List<MedicalRecord>> getMyRecords() async {
     try {
       final response = await _api.dio.get(AppConstants.recordsEndpoint);
+
       if (response.statusCode == 200) {
         final data = response.data;
-        // الـ API يعيد { items: [...] } أو قائمة مباشرة
-        final List raw = data is List
-            ? data
-            : (data['items'] ?? data['records'] ?? []);
-        return raw.map((e) => MedicalRecord.fromJson(e)).toList();
+        // The backend returns { items: [...] }
+        final List<dynamic> items =
+            data is Map ? (data['items'] ?? data['records'] ?? []) : data as List;
+        return items
+            .map((j) => MedicalRecord.fromJson(j as Map<String, dynamic>))
+            .toList();
       }
-      return [];
-    } on DioException catch (e) {
-      final msg = e.response?.data?['error'] ?? 'فشل تحميل السجلات';
+
+      final msg = _extractError(response.data, response.statusCode);
       throw Exception(msg);
+    } on DioException catch (e) {
+      throw Exception(_extractError(e.response?.data, e.response?.statusCode));
     }
   }
 
-  /// رفع ملف طبي — يعمل على الويب والموبايل
+  // ─── Upload ───────────────────────────────────────────────────────
+
+  /// Uploads a [PlatformFile] as multipart/form-data.
+  /// Works on both mobile (uses path) and web (uses bytes).
   Future<MedicalRecord> uploadFile(
     PlatformFile platformFile, {
     String? description,
     void Function(int sent, int total)? onProgress,
   }) async {
     try {
-      late MultipartFile multipartFile;
+      final String fileName = platformFile.name;
+      MultipartFile multipartFile;
 
-      if (kIsWeb) {
-        // على الويب: نستخدم الـ bytes مباشرة (لا يوجد path)
-        final bytes = platformFile.bytes;
-        if (bytes == null) throw Exception('لا يمكن قراءة الملف');
+      if (platformFile.bytes != null) {
+        // Web — bytes are available directly
         multipartFile = MultipartFile.fromBytes(
-          bytes,
-          filename: platformFile.name,
+          platformFile.bytes!,
+          filename: fileName,
+        );
+      } else if (platformFile.path != null) {
+        // Mobile / desktop — use file path
+        multipartFile = await MultipartFile.fromFile(
+          platformFile.path!,
+          filename: fileName,
         );
       } else {
-        // على الموبايل: نستخدم المسار
-        final path = platformFile.path;
-        if (path == null) throw Exception('لا يمكن قراءة مسار الملف');
-        multipartFile = await MultipartFile.fromFile(
-          path,
-          filename: platformFile.name,
-        );
+        throw Exception('لا يمكن قراءة الملف');
       }
 
-      // اسم الحقل في الـ API هو 'files' (وليس 'file')
       final formData = FormData.fromMap({
         'files': multipartFile,
         if (description != null && description.isNotEmpty)
           'description': description,
       });
 
-      // ✅ Add blob token header for upload
       final response = await _api.dio.post(
         AppConstants.recordsEndpoint,
         data: formData,
         options: Options(
-          headers: {
-            'x-blob-token': AppConstants.blobReadWriteToken,
-          },
+          contentType: 'multipart/form-data',
+          // Remove the default application/json Content-Type for this request
+          headers: {'Content-Type': 'multipart/form-data'},
         ),
         onSendProgress: onProgress,
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = response.data;
-        // الـ API يعيد { items: [{id, fileUrl, fileName}] }
-        final itemsList = data['items'] as List?;
-        if (itemsList != null && itemsList.isNotEmpty) {
-          return MedicalRecord.fromJson(itemsList.first);
-        }
-        return MedicalRecord.fromJson(data);
+        final data = response.data as Map<String, dynamic>;
+        // Backend returns { items: [{ id, fileUrl, fileName }] }
+        final items = data['items'] as List<dynamic>;
+        if (items.isEmpty) throw Exception('لم يتم استلام بيانات الملف');
+        final item = items.first as Map<String, dynamic>;
+        // Build a full MedicalRecord from the returned partial data
+        return MedicalRecord.fromJson({
+          ...item,
+          'createdAt': DateTime.now().toIso8601String(),
+          'description': description,
+        });
       }
-      throw Exception(response.data?['error'] ?? 'فشل رفع الملف');
+
+      throw Exception(_extractError(response.data, response.statusCode));
     } on DioException catch (e) {
-      final msg = e.response?.data?['error'] ?? 'فشل رفع الملف';
-      throw Exception(msg);
+      throw Exception(_extractError(e.response?.data, e.response?.statusCode));
     }
   }
 
-  /// حذف سجل طبي
-  Future<void> deleteRecord(String recordId) async {
+  // ─── Delete ───────────────────────────────────────────────────────
+
+  Future<void> deleteRecord(String id) async {
     try {
-      await _api.dio.delete('${AppConstants.recordsEndpoint}/$recordId');
+      final response =
+          await _api.dio.delete('${AppConstants.recordsEndpoint}/$id');
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception(_extractError(response.data, response.statusCode));
+      }
     } on DioException catch (e) {
-      final msg = e.response?.data?['error'] ?? 'فشل حذف السجل';
-      throw Exception(msg);
+      throw Exception(_extractError(e.response?.data, e.response?.statusCode));
     }
+  }
+
+  // ─── helpers ──────────────────────────────────────────────────────
+  String _extractError(dynamic body, int? statusCode) {
+    if (body is Map) {
+      return (body['message'] ?? body['error'] ?? 'خطأ (${statusCode ?? '?'})').toString();
+    }
+    return 'خطأ في الاتصال بالخادم';
   }
 }
