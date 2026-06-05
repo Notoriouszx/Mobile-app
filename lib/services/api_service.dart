@@ -36,12 +36,16 @@ class ApiService {
         final token = await _storage.read(key: 'auth_token');
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
+          debugPrint('🔑 [ApiService] Token attached to ${options.path}');
+        } else {
+          debugPrint('⚠️ [ApiService] No token for ${options.path}');
         }
         handler.next(options);
       },
       onError: (error, handler) async {
         if (error.response?.statusCode == 401) {
           await clearSession();
+          debugPrint('🔄 [ApiService] 401 → session cleared');
         }
         handler.next(error);
       },
@@ -58,11 +62,13 @@ class ApiService {
   /// Save the Bearer token after login
   Future<void> saveToken(String token) async {
     await _storage.write(key: 'auth_token', value: token);
+    debugPrint('💾 [ApiService] Token saved');
   }
 
   /// Clear the Bearer token on logout
   Future<void> clearToken() async {
     await _storage.delete(key: 'auth_token');
+    debugPrint('🗑️ [ApiService] Token cleared');
   }
 
   /// Clear both cookies (mobile) and token
@@ -72,4 +78,7 @@ class ApiService {
     }
     await clearToken();
   }
+
+  // ✅ ADDED: public getter to manually read token (used as fallback)
+  Future<String?> getToken() async => await _storage.read(key: 'auth_token');
 }
