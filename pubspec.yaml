@@ -1,3 +1,11 @@
+name: patient_app
+description: Patient mobile app for medical platform
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '^3.6.0'
+
 dependencies:
   flutter:
     sdk: flutter
@@ -8,7 +16,7 @@ dependencies:
   dio: ^5.4.0
   dio_cookie_manager: ^3.1.1
   cookie_jar: ^4.0.8
-  flutter_secure_storage: ^9.0.0   # ← ADD THIS LINE
+  flutter_secure_storage: ^9.0.0
 
   # UI / utilities
   provider: ^6.1.1
