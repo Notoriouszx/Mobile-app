@@ -3,18 +3,16 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:flutter/foundation.dart'; // ✅ ADDED for debugPrint
-
 import '../utils/constants.dart';
 
 class ApiService {
   static ApiService? _instance;
   late final Dio _dio;
-  late final CookieJar _cookieJar;
+  late final CookieJar? _cookieJar;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   ApiService._internal() {
-    _cookieJar = CookieJar();
+    _cookieJar = kIsWeb ? null : CookieJar();
 
     _dio = Dio(BaseOptions(
       baseUrl: AppConstants.baseUrl,
@@ -25,29 +23,30 @@ class ApiService {
         'Accept': 'application/json',
       },
       validateStatus: (status) => status != null && status < 600,
-      extra: {'withCredentials': true},
+      // Disable credentials (cookies) on web – only Bearer token
+      extra: {'withCredentials': !kIsWeb},
     ));
 
-    if (!kIsWeb) {
-      _dio.interceptors.add(CookieManager(_cookieJar));
+    if (!kIsWeb && _cookieJar != null) {
+      _dio.interceptors.add(CookieManager(_cookieJar!));
     }
 
-    // 🔑 CRITICAL: Add token interceptor for ALL platforms
+    // Token interceptor (always first)
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         final token = await _storage.read(key: 'auth_token');
-        if (token != null) {
+        if (token != null && token.isNotEmpty) {
           options.headers['Authorization'] = 'Bearer $token';
-          debugPrint('🔑 [ApiService] Token attached to ${options.path}');
+          print('✅ Token attached to ${options.path}');
         } else {
-          debugPrint('⚠️ [ApiService] No token for ${options.path}');
+          print('⚠️ No token for ${options.path}');
         }
         handler.next(options);
       },
       onError: (error, handler) async {
         if (error.response?.statusCode == 401) {
           await clearSession();
-          debugPrint('🔄 [ApiService] 401 → session cleared');
+          print('🔄 401 → session cleared');
         }
         handler.next(error);
       },
@@ -61,26 +60,22 @@ class ApiService {
 
   Dio get dio => _dio;
 
-  /// Save the Bearer token after login
   Future<void> saveToken(String token) async {
     await _storage.write(key: 'auth_token', value: token);
-    debugPrint('💾 [ApiService] Token saved');
+    print('💾 Token saved');
   }
 
-  /// Clear the Bearer token on logout
   Future<void> clearToken() async {
     await _storage.delete(key: 'auth_token');
-    debugPrint('🗑️ [ApiService] Token cleared');
+    print('🗑️ Token cleared');
   }
 
-  /// Clear both cookies (mobile) and token
   Future<void> clearSession() async {
-    if (!kIsWeb) {
-      await _cookieJar.deleteAll();
+    if (!kIsWeb && _cookieJar != null) {
+      await _cookieJar!.deleteAll();
     }
     await clearToken();
   }
 
-  // ✅ ADDED: public getter to manually read token (used as fallback)
   Future<String?> getToken() async => await _storage.read(key: 'auth_token');
 }
