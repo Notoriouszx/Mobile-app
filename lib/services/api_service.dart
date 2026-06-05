@@ -2,17 +2,15 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:cookie_jar/cookie_jar.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/constants.dart';
 
 class ApiService {
   static ApiService? _instance;
   late final Dio _dio;
-  late final CookieJar? _cookieJar;
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  late final CookieJar _cookieJar;
 
   ApiService._internal() {
-    _cookieJar = kIsWeb ? null : CookieJar();
+    _cookieJar = CookieJar();
 
     _dio = Dio(BaseOptions(
       baseUrl: AppConstants.baseUrl,
@@ -22,31 +20,28 @@ class ApiService {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
+      // Never throw on 4xx/5xx — callers check statusCode themselves
       validateStatus: (status) => status != null && status < 600,
-      // Disable credentials (cookies) on web – only Bearer token
-      extra: {'withCredentials': !kIsWeb},
+      // withCredentials=true is required on web so the browser
+      // sends the better-auth session cookie on cross-origin requests
+      // AND accepts the credentialed CORS response from Vercel.
+      extra: {'withCredentials': true},
     ));
 
-    if (!kIsWeb && _cookieJar != null) {
-      _dio.interceptors.add(CookieManager(_cookieJar!));
+    if (!kIsWeb) {
+      // Mobile / desktop: CookieManager stores the better-auth
+      // session cookie from the login response and replays it
+      // automatically on every subsequent request.
+      _dio.interceptors.add(CookieManager(_cookieJar));
     }
+    // On web: withCredentials=true in extra is sufficient.
+    // The browser handles cookie storage and replay natively.
+    // Do NOT add CookieManager on web.
 
-    // Token interceptor (always first)
     _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) async {
-        final token = await _storage.read(key: 'auth_token');
-        if (token != null && token.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $token';
-          print('✅ Token attached to ${options.path}');
-        } else {
-          print('⚠️ No token for ${options.path}');
-        }
-        handler.next(options);
-      },
       onError: (error, handler) async {
         if (error.response?.statusCode == 401) {
           await clearSession();
-          print('🔄 401 → session cleared');
         }
         handler.next(error);
       },
@@ -60,22 +55,10 @@ class ApiService {
 
   Dio get dio => _dio;
 
-  Future<void> saveToken(String token) async {
-    await _storage.write(key: 'auth_token', value: token);
-    print('💾 Token saved');
-  }
-
-  Future<void> clearToken() async {
-    await _storage.delete(key: 'auth_token');
-    print('🗑️ Token cleared');
-  }
-
   Future<void> clearSession() async {
-    if (!kIsWeb && _cookieJar != null) {
-      await _cookieJar!.deleteAll();
+    if (!kIsWeb) {
+      await _cookieJar.deleteAll();
     }
-    await clearToken();
+    // On web the server clears the cookie via Set-Cookie on sign-out.
   }
-
-  Future<String?> getToken() async => await _storage.read(key: 'auth_token');
 }
