@@ -1,45 +1,63 @@
 import 'package:dio/dio.dart';
-import 'api_service.dart';
 import '../models/access_grant_model.dart';
 import '../utils/constants.dart';
+import 'api_service.dart';
 
 class GrantsService {
-  final _api = ApiService();
+  final ApiService _api = ApiService();
 
-  Future<List<Doctor>> getDoctors() async {
-    try {
-      final response = await _api.dio.get(AppConstants.doctorsEndpoint);
-      if (response.statusCode == 200) {
-        final List data = response.data is List
-            ? response.data
-            : response.data['doctors'] ?? [];
-        return data.map((e) => Doctor.fromJson(e)).toList();
-      }
-      return [];
-    } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'فشل تحميل قائمة الأطباء');
-    }
-  }
+  // ─── My grants ────────────────────────────────────────────────────
 
   Future<List<AccessGrant>> getMyGrants() async {
     try {
       final response = await _api.dio.get(AppConstants.grantsEndpoint);
+
       if (response.statusCode == 200) {
-        final List data = response.data is List
-            ? response.data
-            : response.data['grants'] ?? [];
-        return data.map((e) => AccessGrant.fromJson(e)).toList();
+        final data = response.data;
+        final List<dynamic> items =
+            data is Map ? (data['items'] ?? data['grants'] ?? []) : data as List;
+        return items
+            .map((j) => AccessGrant.fromJson(j as Map<String, dynamic>))
+            .toList();
       }
-      return [];
+
+      throw Exception(_extractError(response.data, response.statusCode));
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'فشل تحميل المواعيد');
+      throw Exception(_extractError(e.response?.data, e.response?.statusCode));
     }
   }
 
-  /// Create a new appointment request (access grant) for a doctor
+  // ─── Available doctors ────────────────────────────────────────────
+
+  /// Returns the list of available doctors/nurses.
+  /// Backend: GET /api/patient/available-providers → { items: [...] }
+  Future<List<Doctor>> getDoctors() async {
+    try {
+      final response =
+          await _api.dio.get(AppConstants.doctorsEndpoint);
+
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>;
+        final List<dynamic> items = data['items'] ?? [];
+        return items
+            .map((j) => Doctor.fromJson(j as Map<String, dynamic>))
+            .toList();
+      }
+
+      throw Exception(_extractError(response.data, response.statusCode));
+    } on DioException catch (e) {
+      throw Exception(_extractError(e.response?.data, e.response?.statusCode));
+    }
+  }
+
+  // ─── Create grant ─────────────────────────────────────────────────
+
+  /// Backend: POST /api/access-grants
+  /// Body: { doctorId?, nurseId?, expiresInHours }
+  /// Returns: { id, token, otp, expiresAt, magicLinkPath }
   Future<AccessGrant> createGrant({
     required String doctorId,
-    int expiresInHours = 72,
+    required int expiresInHours,
   }) async {
     try {
       final response = await _api.dio.post(
@@ -49,21 +67,45 @@ class GrantsService {
           'expiresInHours': expiresInHours,
         },
       );
+
       if (response.statusCode == 200 || response.statusCode == 201) {
-        return AccessGrant.fromJson(response.data);
+        final data = response.data as Map<String, dynamic>;
+        // Backend returns { id, token, otp, expiresAt, magicLinkPath }
+        // Build an AccessGrant from the response
+        return AccessGrant.fromJson({
+          ...data,
+          'patientId': '', // filled by server
+          'status': 'pending',
+          'createdAt': DateTime.now().toIso8601String(),
+        });
       }
-      throw Exception('فشل طلب الموعد');
+
+      throw Exception(_extractError(response.data, response.statusCode));
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'فشل طلب الموعد');
+      throw Exception(_extractError(e.response?.data, e.response?.statusCode));
     }
   }
 
-  /// Cancel / revoke a grant
-  Future<void> revokeGrant(String grantId) async {
+  // ─── Revoke grant ─────────────────────────────────────────────────
+
+  /// Backend: DELETE /api/access-grants/[id]
+  Future<void> revokeGrant(String id) async {
     try {
-      await _api.dio.delete('${AppConstants.grantsEndpoint}/$grantId');
+      final response =
+          await _api.dio.delete('${AppConstants.grantsEndpoint}/$id');
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception(_extractError(response.data, response.statusCode));
+      }
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'فشل إلغاء الموعد');
+      throw Exception(_extractError(e.response?.data, e.response?.statusCode));
     }
+  }
+
+  // ─── helpers ──────────────────────────────────────────────────────
+  String _extractError(dynamic body, int? statusCode) {
+    if (body is Map) {
+      return (body['message'] ?? body['error'] ?? 'خطأ (${statusCode ?? '?'})').toString();
+    }
+    return 'خطأ في الاتصال بالخادم';
   }
 }
