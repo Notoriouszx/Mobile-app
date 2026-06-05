@@ -25,12 +25,12 @@ class ApiService {
       validateStatus: (status) => status != null && status < 600,
     ));
 
-    // Only add CookieManager on mobile (not on web)
+    /* Only add CookieManager on mobile (not on web) – cookies are not reliable on web
     if (!kIsWeb) {
       _dio.interceptors.add(CookieManager(_cookieJar));
-    }
+    } */
 
-    // Add token interceptor for all platforms (web will use token, mobile will have both)
+    // 🔑 Add Bearer token interceptor for all platforms (web uses token, mobile uses token + optional cookies)
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         final token = await _storage.read(key: 'auth_token');
@@ -55,15 +55,17 @@ class ApiService {
 
   Dio get dio => _dio;
 
+  /// Save the Bearer token after successful login
   Future<void> saveToken(String token) async {
     await _storage.write(key: 'auth_token', value: token);
   }
 
+  /// Clear the Bearer token on logout
   Future<void> clearToken() async {
     await _storage.delete(key: 'auth_token');
   }
 
-  /// Clear all session cookies (mobile only) and token
+  /// Clear both cookies (mobile only) and the Bearer token
   Future<void> clearSession() async {
     if (!kIsWeb) {
       await _cookieJar.deleteAll();
