@@ -66,6 +66,12 @@ class RecordsService {
           'description': description,
       });
 
+      // ✅ ADDED: manual token fallback (safety net)
+      final token = await _api.getToken();
+      if (token != null && token.isNotEmpty) {
+        _api.dio.options.headers['Authorization'] = 'Bearer $token';
+      }
+
       final response = await _api.dio.post(
         AppConstants.recordsEndpoint,
         data: formData,
