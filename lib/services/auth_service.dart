@@ -8,16 +8,12 @@ class AuthService {
 
   /// Sign in with email + password.
   ///
-  /// Better Auth responds with:
-  ///   { "user": {...}, "session": {...} }
-  /// AND sets a `better-auth.session_token` cookie in the response headers.
+  /// The backend returns:
+  ///   { "token": "...", "user": {...}, "redirect": false }
   ///
-  /// On mobile  → CookieManager (dio_cookie_manager) stores the cookie
-  ///              automatically and sends it on every subsequent request.
-  /// On web     → the browser stores the cookie automatically because
-  ///              withCredentials = true.
-  ///
-  /// We do NOT store a Bearer token — Better Auth is cookie-based.
+  /// We save the token via `_api.saveToken()` so that the token interceptor
+  /// can attach it as `Authorization: Bearer <token>` to every request.
+  /// (Cookies are also set, but they do not work cross‑origin on web.)
   Future<UserModel> signIn(String email, String password) async {
     try {
       final response = await _api.dio.post(
@@ -27,12 +23,17 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final data = response.data as Map<String, dynamic>;
-        // Better Auth returns { user: {...}, session: {...} }
+        final token = data['token'] as String?;
+        if (token == null) {
+          throw Exception('لم يتم استلام رمز المصادقة');
+        }
+        // Save the Bearer token for future requests
+        await _api.saveToken(token);
+
         final userJson = data['user'] as Map<String, dynamic>?;
         if (userJson == null) {
           throw Exception('لم يتم استلام بيانات المستخدم');
         }
-        // Cookie is stored automatically — nothing extra to do.
         return UserModel.fromJson(userJson);
       }
 
@@ -44,9 +45,8 @@ class AuthService {
     }
   }
 
-  /// Verify there is an active session by calling Better Auth's
-  /// /api/auth/get-session endpoint.  The session cookie is sent
-  /// automatically by the cookie jar / browser.
+  /// Verify there is an active session.
+  /// The token interceptor automatically adds the Bearer token.
   Future<UserModel?> getSession() async {
     try {
       final response = await _api.dio.get(AppConstants.sessionEndpoint);
@@ -63,8 +63,7 @@ class AuthService {
     }
   }
 
-  /// Sign out — tells the server to invalidate the session cookie,
-  /// then clears the local cookie jar (mobile).
+  /// Sign out – clears the token and any session cookies.
   Future<void> signOut() async {
     try {
       await _api.dio.post(AppConstants.signOutEndpoint);
