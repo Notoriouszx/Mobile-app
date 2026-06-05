@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/medical_record_model.dart';
@@ -16,16 +15,15 @@ class RecordsService {
 
       if (response.statusCode == 200) {
         final data = response.data;
-        // The backend returns { items: [...] }
-        final List<dynamic> items =
-            data is Map ? (data['items'] ?? data['records'] ?? []) : data as List;
+        final List<dynamic> items = data is Map
+            ? (data['items'] ?? data['records'] ?? [])
+            : data as List;
         return items
             .map((j) => MedicalRecord.fromJson(j as Map<String, dynamic>))
             .toList();
       }
 
-      final msg = _extractError(response.data, response.statusCode);
-      throw Exception(msg);
+      throw Exception(_extractError(response.data, response.statusCode));
     } on DioException catch (e) {
       throw Exception(_extractError(e.response?.data, e.response?.statusCode));
     }
@@ -33,8 +31,6 @@ class RecordsService {
 
   // ─── Upload ───────────────────────────────────────────────────────
 
-  /// Uploads a [PlatformFile] as multipart/form-data.
-  /// Works on both mobile (uses path) and web (uses bytes).
   Future<MedicalRecord> uploadFile(
     PlatformFile platformFile, {
     String? description,
@@ -45,13 +41,11 @@ class RecordsService {
       MultipartFile multipartFile;
 
       if (platformFile.bytes != null) {
-        // Web — bytes are available directly
         multipartFile = MultipartFile.fromBytes(
           platformFile.bytes!,
           filename: fileName,
         );
       } else if (platformFile.path != null) {
-        // Mobile / desktop — use file path
         multipartFile = await MultipartFile.fromFile(
           platformFile.path!,
           filename: fileName,
@@ -66,18 +60,10 @@ class RecordsService {
           'description': description,
       });
 
-      // ✅ ADDED: manual token fallback (safety net)
-      final token = await _api.getToken();
-      if (token != null && token.isNotEmpty) {
-        _api.dio.options.headers['Authorization'] = 'Bearer $token';
-      }
-
       final response = await _api.dio.post(
         AppConstants.recordsEndpoint,
         data: formData,
         options: Options(
-          contentType: 'multipart/form-data',
-          // Remove the default application/json Content-Type for this request
           headers: {'Content-Type': 'multipart/form-data'},
         ),
         onSendProgress: onProgress,
@@ -85,11 +71,9 @@ class RecordsService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = response.data as Map<String, dynamic>;
-        // Backend returns { items: [{ id, fileUrl, fileName }] }
         final items = data['items'] as List<dynamic>;
         if (items.isEmpty) throw Exception('لم يتم استلام بيانات الملف');
         final item = items.first as Map<String, dynamic>;
-        // Build a full MedicalRecord from the returned partial data
         return MedicalRecord.fromJson({
           ...item,
           'createdAt': DateTime.now().toIso8601String(),
@@ -118,6 +102,7 @@ class RecordsService {
   }
 
   // ─── helpers ──────────────────────────────────────────────────────
+
   String _extractError(dynamic body, int? statusCode) {
     if (body is Map) {
       return (body['message'] ?? body['error'] ?? 'خطأ (${statusCode ?? '?'})').toString();
